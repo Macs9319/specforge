@@ -18,6 +18,16 @@ Then open http://localhost:3000.
 
 The `web` service runs `prisma generate` then `next dev` on start, so schema changes are picked up automatically on the next container restart.
 
+`node_modules` is kept in a separate named volume (not the bind mount) so native dependencies match the container's Linux/musl environment instead of your host's. That volume is only populated from the image the first time it's created, so **after changing `package.json`**, rebuild it explicitly:
+
+```sh
+docker compose down
+docker volume rm functionalspec_web_node_modules
+docker compose up --build
+```
+
+(A stale volume shows up as a `Module not found` error for a package you just added.)
+
 ## Running the app on the host, with dependencies in Docker
 
 Useful for faster iteration than rebuilding the `web` image on every change.
