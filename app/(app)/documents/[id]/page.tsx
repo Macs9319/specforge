@@ -26,6 +26,12 @@ export default async function DocumentDetailPage({
         </p>
       </div>
       <ProcessingStatusView
+        // Forces a full remount on navigation between two documents —
+        // without it, React can reuse this subtree's component instances
+        // (including PrdViewer's local edit-draft state) across the App
+        // Router's soft navigation between two instances of this same
+        // dynamic route, showing/editing the wrong document's PRD.
+        key={document.id}
         documentId={document.id}
         initialDocument={{
           status: document.status,

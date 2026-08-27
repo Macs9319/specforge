@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { findOwnedPrd } from "@/lib/prds/queries";
+import { sanitizeFilename } from "@/lib/filename";
+import { findOwnedPrdWithDocument } from "@/lib/prds/queries";
 import { prisma } from "@/lib/prisma";
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 
 export async function GET(
   _request: Request,
@@ -17,15 +14,12 @@ export async function GET(
   }
 
   const { id } = await params;
-  const prd = await findOwnedPrd(prisma, session.user.id, id);
+  const prd = await findOwnedPrdWithDocument(prisma, session.user.id, id);
   if (!prd || prd.content === null) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const document = await prisma.document.findUnique({
-    where: { id: prd.documentId },
-  });
-  const title = document ? document.title.replace(/\.[^.]+$/, "") : "prd";
+  const title = prd.document.title.replace(/\.[^.]+$/, "");
   const filename = `${sanitizeFilename(title) || "prd"}.md`;
 
   return new NextResponse(prd.content, {

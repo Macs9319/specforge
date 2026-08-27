@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "../../generated/prisma";
+import { sanitizeFilename } from "../filename";
 import type { StorageProvider } from "../storage/types";
 import { detectSourceFileType } from "./file-type";
 
@@ -24,10 +25,6 @@ export type UploadDocumentResult =
     }
   | { ok: false; error: "FILE_TOO_LARGE" | "UNSUPPORTED_FILE_TYPE" };
 
-function sanitizeFilename(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
-}
-
 export async function uploadDocument(
   deps: {
     prisma: Pick<PrismaClient, "document">;
@@ -44,7 +41,7 @@ export async function uploadDocument(
     return { ok: false, error: "UNSUPPORTED_FILE_TYPE" };
   }
 
-  const storageKey = `${input.userId}/${randomUUID()}-${sanitizeFilename(input.filename)}`;
+  const storageKey = `${input.userId}/${randomUUID()}-${sanitizeFilename(input.filename).slice(-100)}`;
   await deps.storage.putObject(storageKey, input.buffer, input.mimeType);
 
   let document;

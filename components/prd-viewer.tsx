@@ -33,24 +33,38 @@ export function PrdViewer({
     setSaving(true);
     setSaveError(null);
 
-    const response = await fetch(`/api/prds/${prd.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: draft }),
-    });
+    try {
+      const response = await fetch(`/api/prds/${prd.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: draft }),
+      });
 
-    setSaving(false);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setSaveError(body?.error ?? "Failed to save. Please try again.");
+        return;
+      }
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setSaveError(body?.error ?? "Failed to save. Please try again.");
+      const body = await response.json();
+      setSavedContent(draft);
+      setEditedAt(body.prd.editedAt);
+      setMode("preview");
+    } catch {
+      setSaveError("Network error. Please check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleRegenerateClick() {
+    const message = dirty
+      ? "You have unsaved edits that will be lost if you regenerate now. Regenerate anyway?"
+      : "Regenerate the PRD? This will overwrite the current content.";
+    if (!window.confirm(message)) {
       return;
     }
-
-    const body = await response.json();
-    setSavedContent(draft);
-    setEditedAt(body.prd.editedAt);
-    setMode("preview");
+    onRegenerate();
   }
 
   return (
@@ -95,7 +109,7 @@ export function PrdViewer({
           </a>
           <button
             type="button"
-            onClick={onRegenerate}
+            onClick={handleRegenerateClick}
             disabled={regeneratePending}
             className="rounded border border-gray-300 px-3 py-1 text-sm disabled:opacity-50"
           >

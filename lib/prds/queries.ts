@@ -1,4 +1,4 @@
-import type { Prd, PrismaClient } from "../../generated/prisma";
+import type { Document, Prd, PrismaClient } from "../../generated/prisma";
 
 /**
  * Fetches a PRD only if it belongs to the given user. Returns null both
@@ -11,6 +11,23 @@ export async function findOwnedPrd(
   prdId: string,
 ): Promise<Prd | null> {
   const prd = await prisma.prd.findUnique({ where: { id: prdId } });
+
+  if (!prd || prd.userId !== userId) {
+    return null;
+  }
+
+  return prd;
+}
+
+export async function findOwnedPrdWithDocument(
+  prisma: Pick<PrismaClient, "prd">,
+  userId: string,
+  prdId: string,
+): Promise<(Prd & { document: Document }) | null> {
+  const prd = await prisma.prd.findUnique({
+    where: { id: prdId },
+    include: { document: true },
+  });
 
   if (!prd || prd.userId !== userId) {
     return null;

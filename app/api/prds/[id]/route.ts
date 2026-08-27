@@ -30,6 +30,16 @@ export async function PATCH(
     );
   }
 
+  if (prd.status === "PENDING" || prd.status === "PROCESSING") {
+    return NextResponse.json(
+      {
+        error:
+          "A regeneration is in progress for this PRD, so it can't be edited right now.",
+      },
+      { status: 409 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
@@ -39,10 +49,25 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.prd.update({
-    where: { id },
+  // A conditional update rather than a plain one: if a regenerate slips
+  // in between the status check above and this write, the status is no
+  // longer COMPLETE/FAILED and the update matches zero rows instead of
+  // silently clobbering fresh, in-flight (or freshly-written) content.
+  const { count } = await prisma.prd.updateMany({
+    where: { id, status: { notIn: ["PENDING", "PROCESSING"] } },
     data: { content: parsed.data.content, editedAt: new Date() },
   });
 
+  if (count === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "A regeneration started while you were editing, so this save was skipped. Please review and try again.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const updated = await prisma.prd.findUniqueOrThrow({ where: { id } });
   return NextResponse.json({ prd: updated });
 }

@@ -98,28 +98,31 @@ export function ProcessingStatusView({
 
   const phase = derivePhase(data ?? initialDocument);
 
-  async function runAction(path: string, confirmMessage?: string) {
-    if (confirmMessage && !window.confirm(confirmMessage)) {
-      return;
-    }
+  async function runAction(path: string) {
     setActionError(null);
     setActionPending(true);
-    const response = await fetch(`/api/documents/${documentId}/${path}`, {
-      method: "POST",
-    });
-    setActionPending(false);
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setActionError(body?.error ?? "That didn't work. Please try again.");
-      return;
+    try {
+      const response = await fetch(`/api/documents/${documentId}/${path}`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setActionError(body?.error ?? "That didn't work. Please try again.");
+        return;
+      }
+
+      // Force a fresh fetch — without this, the SWR cache still holds the
+      // terminal (FAILED/ready) state that stopped polling, so refetching
+      // is what makes polling resume once the new state is non-terminal.
+      await mutate();
+      router.refresh();
+    } catch {
+      setActionError("Network error. Please check your connection and try again.");
+    } finally {
+      setActionPending(false);
     }
-
-    // Force a fresh fetch — without this, the SWR cache still holds the
-    // terminal (FAILED/ready) state that stopped polling, so refetching
-    // is what makes polling resume once the new state is non-terminal.
-    await mutate();
-    router.refresh();
   }
 
   switch (phase.kind) {
@@ -161,12 +164,7 @@ export function ProcessingStatusView({
       return (
         <PrdViewer
           prd={phase.prd}
-          onRegenerate={() =>
-            runAction(
-              "regenerate",
-              "Regenerate the PRD? This will overwrite the current content.",
-            )
-          }
+          onRegenerate={() => runAction("regenerate")}
           regeneratePending={actionPending}
           regenerateError={actionError}
         />

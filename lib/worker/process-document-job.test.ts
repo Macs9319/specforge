@@ -91,6 +91,31 @@ describe("processDocumentJob", () => {
     ]);
   });
 
+  it("clears editedAt on a fresh generation, so a regenerate doesn't leave a stale edit timestamp", async () => {
+    const { document } = await createTestUserAndDocument({
+      extractedText: "Already parsed text.",
+    });
+    await prisma.prd.create({
+      data: {
+        documentId: document.id,
+        userId: document.userId,
+        status: "PENDING",
+        content: "old hand-edited content",
+        editedAt: new Date(),
+      },
+    });
+
+    await processDocumentJob(
+      { prisma, storage: new FakeStorageProvider(), llm: new FakeLLMProvider() },
+      { documentId: document.id },
+    );
+
+    const prd = await prisma.prd.findUniqueOrThrow({
+      where: { documentId: document.id },
+    });
+    expect(prd.editedAt).toBeNull();
+  });
+
   it("skips parsing when extractedText already exists (retry/regenerate)", async () => {
     const { document } = await createTestUserAndDocument({
       extractedText: "Already parsed text.",

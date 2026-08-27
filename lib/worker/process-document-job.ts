@@ -89,6 +89,9 @@ export async function processDocumentJob(
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         generatedAt: new Date(),
+        // Fresh AI-generated content supersedes any prior manual edit —
+        // don't show a stale "last edited" timestamp against it.
+        editedAt: null,
         errorMessage: null,
       },
     });
