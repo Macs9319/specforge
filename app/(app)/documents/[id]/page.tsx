@@ -32,8 +32,11 @@ export default async function DocumentDetailPage({
           errorMessage: document.errorMessage,
           prd: document.prd
             ? {
+                id: document.prd.id,
                 status: document.prd.status,
                 errorMessage: document.prd.errorMessage,
+                content: document.prd.content,
+                editedAt: document.prd.editedAt?.toISOString() ?? null,
               }
             : null,
         }}

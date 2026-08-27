@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
+import { PrdViewer } from "./prd-viewer";
 
 type Status = "PENDING" | "PROCESSING" | "COMPLETE" | "FAILED";
 
@@ -10,8 +11,11 @@ export type DocumentWithPrdStatus = {
   status: Status;
   errorMessage: string | null;
   prd: {
+    id: string;
     status: Status;
     errorMessage: string | null;
+    content: string | null;
+    editedAt: string | null;
   } | null;
 };
 
@@ -20,7 +24,10 @@ type Phase =
   | { kind: "parse-failed"; error: string | null }
   | { kind: "generating" }
   | { kind: "generate-failed"; error: string | null }
-  | { kind: "ready" };
+  | {
+      kind: "ready";
+      prd: { id: string; content: string; editedAt: string | null };
+    };
 
 /**
  * The single source of truth for "what state is this document in" — both
@@ -45,7 +52,14 @@ function derivePhase(document: DocumentWithPrdStatus): Phase {
   if (document.prd.status === "FAILED") {
     return { kind: "generate-failed", error: document.prd.errorMessage };
   }
-  return { kind: "ready" };
+  return {
+    kind: "ready",
+    prd: {
+      id: document.prd.id,
+      content: document.prd.content ?? "",
+      editedAt: document.prd.editedAt,
+    },
+  };
 }
 
 function isTerminal(phase: Phase): boolean {
@@ -145,18 +159,16 @@ export function ProcessingStatusView({
 
     case "ready":
       return (
-        <StatusBlock
-          label="PRD ready"
-          action={{
-            label: "Regenerate",
-            pending: actionPending,
-            onClick: () =>
-              runAction(
-                "regenerate",
-                "Regenerate the PRD? This will overwrite the current content.",
-              ),
-          }}
-          actionError={actionError}
+        <PrdViewer
+          prd={phase.prd}
+          onRegenerate={() =>
+            runAction(
+              "regenerate",
+              "Regenerate the PRD? This will overwrite the current content.",
+            )
+          }
+          regeneratePending={actionPending}
+          regenerateError={actionError}
         />
       );
   }
