@@ -1,12 +1,14 @@
 import { z } from "zod";
 
+const normalizedEmail = z.string().trim().toLowerCase().email();
+
 export const registerSchema = z.object({
-  email: z.string().email(),
+  email: normalizedEmail,
   password: z.string().min(8),
 });
 
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: normalizedEmail,
   password: z.string().min(1),
 });
 

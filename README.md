@@ -38,10 +38,12 @@ Useful for faster iteration than rebuilding the `web` image on every change.
    docker compose up -d postgres redis minio
    ```
 
-2. Copy the env file and install dependencies:
+2. Copy the env file, generate an auth secret, and install dependencies:
 
    ```sh
    cp .env.example .env
+   # fill in AUTH_SECRET in .env:
+   openssl rand -base64 32
    npm install
    ```
 

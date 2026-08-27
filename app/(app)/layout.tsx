@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 
+// Auth is gated here per Next.js's own guidance to check session in each
+// server function/layout rather than centralizing it in proxy/middleware
+// (which Server Actions can bypass): every protected page must live under
+// this (app) route group to inherit the redirect below.
 export default async function AppLayout({
   children,
 }: {
