@@ -1,73 +1,30 @@
 # SpecForge
 
-Upload a technical document describing a process flow; SpecForge generates a structured Product Requirements Document (PRD) from it using an LLM.
+Upload a technical document describing a process flow. SpecForge parses it, generates a structured PRD with an LLM — including a rendered process-flow diagram — and lets you view, edit, and export it.
 
-## Running the whole stack (Docker Compose)
+![Dashboard](docs/screenshots/dashboard.png)
 
-This runs everything — the app, the background worker, Postgres, Redis, and MinIO — with one command. No local Node install or `.env` file required.
+![Generated PRD](docs/screenshots/prd-viewer.png)
 
-By default PRD generation uses a **fake LLM provider** (canned output, no API calls or key needed) — good enough to try out the upload → process → PRD flow. To use the real Anthropic model, export `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=<your key>` in your shell before `docker compose up` (they override the compose file's defaults).
+## Quick start
 
 ```sh
 docker compose up
 ```
 
-Then open http://localhost:3000.
+Open http://localhost:3000. Everything — the app, the background worker, Postgres, Redis, and MinIO — starts together, and the database is set up automatically.
 
-- Postgres: `localhost:5432` (user/password/db: `specforge`)
-- Redis: `localhost:6379`
-- MinIO API: `localhost:9000`, console: `localhost:9001` (user/password: `minioadmin`)
+By default it uses a **fake LLM provider** (no API key needed), so you can try the whole upload → PRD flow immediately. To use the real Anthropic model, set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=<your key>` before running the command above.
 
-The `web` service runs `prisma migrate deploy` then `prisma generate` then `next dev` on start — pending migrations are applied automatically, including against a completely fresh database, so a clean `docker compose up` needs no manual setup step. `web` and `worker` both expose a health check (`GET /api/health` on `web`; an internal-only `/health` on port 3001 for `worker`) that verifies Postgres and Redis connectivity; `worker` doesn't start until `web` reports healthy, since `web` is what runs the migration.
-
-`node_modules` is kept in a separate named volume (not the bind mount) so native dependencies match the container's Linux/musl environment instead of your host's. That volume is only populated from the image the first time it's created, so **after changing `package.json`**, rebuild it explicitly:
+## Local development
 
 ```sh
-docker compose down
-docker volume rm functionalspec_web_node_modules
-docker compose up --build
+docker compose up -d postgres redis minio   # backing services only
+cp .env.example .env                        # then set AUTH_SECRET (openssl rand -base64 32)
+npm install
+npm run prisma:migrate
+npm run dev          # terminal 1 — the app
+npm run worker:dev   # terminal 2 — parses documents and calls the LLM
 ```
 
-(A stale volume shows up as a `Module not found` error for a package you just added.)
-
-## Running the app on the host, with dependencies in Docker
-
-Useful for faster iteration than rebuilding the `web` image on every change.
-
-1. Start only the backing services:
-
-   ```sh
-   docker compose up -d postgres redis minio
-   ```
-
-2. Copy the env file, generate an auth secret, and install dependencies:
-
-   ```sh
-   cp .env.example .env
-   # fill in AUTH_SECRET in .env:
-   openssl rand -base64 32
-   npm install
-   ```
-
-   `.env` defaults `LLM_PROVIDER` to `fake` (no key needed). To use the real Anthropic model instead, set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` in `.env`.
-
-3. Run migrations, then start the dev server **and** the worker (in separate terminals — the worker is what actually parses documents and calls the LLM; without it, uploads stay stuck at "Parsing document…"):
-
-   ```sh
-   npm run prisma:migrate
-   npm run dev          # terminal 1
-   npm run worker:dev   # terminal 2
-   ```
-
-## Scripts
-
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Start the Next.js dev server |
-| `npm run worker` / `npm run worker:dev` | Run the background worker once / with auto-restart on change |
-| `npm run build` / `npm run start` | Production build / start |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Run the test suite (Vitest) — requires `docker compose up -d postgres` (the worker's job-handler integration test runs against a real database) |
-| `npm run prisma:generate` | Regenerate the Prisma client |
-| `npm run prisma:migrate` | Create/apply a dev migration |
+`npm test` runs the test suite (needs `docker compose up -d postgres`).
