@@ -36,7 +36,10 @@ export async function processDocumentJob(
 
   let extractedText = document.extractedText;
 
-  if (!extractedText) {
+  // Distinguish "never parsed" (null) from "parsed to an empty string"
+  // (a scanned/image-only PDF, an empty upload) — the latter is done and
+  // must not be re-parsed on every subsequent retry/regenerate.
+  if (extractedText === null) {
     await deps.prisma.document.update({
       where: { id: document.id },
       data: { status: "PROCESSING" },

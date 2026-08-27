@@ -15,7 +15,12 @@ export type UploadDocumentInput = {
 export type UploadDocumentResult =
   | {
       ok: true;
-      document: { id: string; title: string; status: string };
+      document: {
+        id: string;
+        title: string;
+        status: string;
+        storageKey: string;
+      };
     }
   | { ok: false; error: "FILE_TOO_LARGE" | "UNSUPPORTED_FILE_TYPE" };
 
@@ -68,6 +73,7 @@ export async function uploadDocument(
       id: document.id,
       title: document.title,
       status: document.status,
+      storageKey: document.storageKey,
     },
   };
 }

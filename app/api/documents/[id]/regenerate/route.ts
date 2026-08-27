@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { findOwnedDocumentWithPrd } from "@/lib/documents/queries";
 import {
-  hasRemainingGenerationQuota,
-  recordGenerationEvent,
+  refundMostRecentGenerationEvent,
+  tryConsumeGenerationQuota,
 } from "@/lib/documents/rate-limit";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { enqueueProcessDocumentJob } from "@/lib/queue";
 
@@ -24,19 +25,29 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (!document.extractedText) {
+  if (document.extractedText === null) {
     return NextResponse.json(
       { error: "This document hasn't finished parsing yet." },
       { status: 400 },
     );
   }
 
-  const withinQuota = await hasRemainingGenerationQuota(
+  if (
+    document.prd?.status === "PENDING" ||
+    document.prd?.status === "PROCESSING"
+  ) {
+    return NextResponse.json(
+      { error: "A generation is already in progress for this document." },
+      { status: 409 },
+    );
+  }
+
+  const consumedQuota = await tryConsumeGenerationQuota(
     prisma,
     session.user.id,
     env.GENERATION_DAILY_LIMIT,
   );
-  if (!withinQuota) {
+  if (!consumedQuota) {
     return NextResponse.json(
       {
         error: `You've reached your daily limit of ${env.GENERATION_DAILY_LIMIT} PRD generations. Try again tomorrow.`,
@@ -51,8 +62,28 @@ export async function POST(
     update: { status: "PENDING", errorMessage: null },
   });
 
-  await recordGenerationEvent(prisma, session.user.id);
-  await enqueueProcessDocumentJob(id);
+  try {
+    await enqueueProcessDocumentJob(id);
+  } catch (error) {
+    logger.error(
+      { err: error, documentId: id },
+      "Failed to enqueue regeneration job; marking as failed rather than leaving it stuck",
+    );
+    await prisma.prd
+      .update({
+        where: { documentId: id },
+        data: {
+          status: "FAILED",
+          errorMessage: "Failed to queue regeneration. Please try again.",
+        },
+      })
+      .catch(() => undefined);
+    await refundMostRecentGenerationEvent(prisma, session.user.id);
+    return NextResponse.json(
+      { error: "Failed to queue regeneration. Please try again." },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ status: "PENDING" }, { status: 202 });
 }

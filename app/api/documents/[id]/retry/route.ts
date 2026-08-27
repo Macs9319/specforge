@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { findOwnedDocumentWithPrd } from "@/lib/documents/queries";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { enqueueProcessDocumentJob } from "@/lib/queue";
 
@@ -19,12 +20,15 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (document.status === "FAILED") {
+  const retryingParse = document.status === "FAILED";
+  const retryingGenerate = document.prd?.status === "FAILED";
+
+  if (retryingParse) {
     await prisma.document.update({
       where: { id },
       data: { status: "PENDING", errorMessage: null },
     });
-  } else if (document.prd?.status === "FAILED") {
+  } else if (retryingGenerate) {
     await prisma.prd.update({
       where: { documentId: id },
       data: { status: "PENDING", errorMessage: null },
@@ -36,7 +40,25 @@ export async function POST(
     );
   }
 
-  await enqueueProcessDocumentJob(id);
+  try {
+    await enqueueProcessDocumentJob(id);
+  } catch (error) {
+    logger.error(
+      { err: error, documentId: id },
+      "Failed to enqueue retry job; reverting to FAILED rather than leaving it stuck",
+    );
+    const message = "Failed to queue retry. Please try again.";
+    if (retryingParse) {
+      await prisma.document
+        .update({ where: { id }, data: { status: "FAILED", errorMessage: message } })
+        .catch(() => undefined);
+    } else {
+      await prisma.prd
+        .update({ where: { documentId: id }, data: { status: "FAILED", errorMessage: message } })
+        .catch(() => undefined);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
   return NextResponse.json({ status: "PENDING" }, { status: 202 });
 }

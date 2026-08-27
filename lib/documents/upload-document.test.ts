@@ -30,7 +30,12 @@ describe("uploadDocument", () => {
 
     expect(result).toEqual({
       ok: true,
-      document: { id: "doc_1", title: "process-flow.pdf", status: "PENDING" },
+      document: {
+        id: "doc_1",
+        title: "process-flow.pdf",
+        status: "PENDING",
+        storageKey: expect.stringMatching(/^user_1\//),
+      },
     });
 
     const [[createArgs]] = (prisma.document.create as ReturnType<typeof vi.fn>)

@@ -3,10 +3,12 @@ import { auth } from "@/auth";
 import { listUserDocuments } from "@/lib/documents/queries";
 import {
   hasRemainingGenerationQuota,
-  recordGenerationEvent,
+  refundMostRecentGenerationEvent,
+  tryConsumeGenerationQuota,
 } from "@/lib/documents/rate-limit";
 import { uploadDocument } from "@/lib/documents/upload-document";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { enqueueProcessDocumentJob } from "@/lib/queue";
 import { getStorageProvider } from "@/lib/storage";
@@ -22,24 +24,30 @@ export async function GET() {
   return NextResponse.json({ documents });
 }
 
+const quotaExceededResponse = () =>
+  NextResponse.json(
+    {
+      error: `You've reached your daily limit of ${env.GENERATION_DAILY_LIMIT} PRD generations. Try again tomorrow.`,
+    },
+    { status: 429 },
+  );
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const withinQuota = await hasRemainingGenerationQuota(
+  // Cheap pre-check so an over-quota user doesn't pay for a storage write
+  // and DB insert before finding out. The real gate — the one that's
+  // actually race-safe — is tryConsumeGenerationQuota below.
+  const mightHaveQuota = await hasRemainingGenerationQuota(
     prisma,
     session.user.id,
     env.GENERATION_DAILY_LIMIT,
   );
-  if (!withinQuota) {
-    return NextResponse.json(
-      {
-        error: `You've reached your daily limit of ${env.GENERATION_DAILY_LIMIT} PRD generations. Try again tomorrow.`,
-      },
-      { status: 429 },
-    );
+  if (!mightHaveQuota) {
+    return quotaExceededResponse();
   }
 
   const formData = await request.formData().catch(() => null);
@@ -53,9 +61,10 @@ export async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const storage = getStorageProvider();
 
   const result = await uploadDocument(
-    { prisma, storage: getStorageProvider() },
+    { prisma, storage },
     {
       userId: session.user.id,
       filename: file.name,
@@ -76,8 +85,39 @@ export async function POST(request: Request) {
     );
   }
 
-  await recordGenerationEvent(prisma, session.user.id);
-  await enqueueProcessDocumentJob(result.document.id);
+  const consumedQuota = await tryConsumeGenerationQuota(
+    prisma,
+    session.user.id,
+    env.GENERATION_DAILY_LIMIT,
+  );
+  if (!consumedQuota) {
+    await prisma.document.delete({ where: { id: result.document.id } });
+    await storage
+      .deleteObject(result.document.storageKey)
+      .catch((error: unknown) =>
+        logger.warn({ err: error }, "Failed to clean up rejected upload's storage object"),
+      );
+    return quotaExceededResponse();
+  }
 
-  return NextResponse.json({ document: result.document }, { status: 201 });
+  try {
+    await enqueueProcessDocumentJob(result.document.id);
+  } catch (error) {
+    logger.error(
+      { err: error, documentId: result.document.id },
+      "Failed to enqueue processing job after upload; rolling back",
+    );
+    await prisma.document.delete({ where: { id: result.document.id } });
+    await storage
+      .deleteObject(result.document.storageKey)
+      .catch(() => undefined);
+    await refundMostRecentGenerationEvent(prisma, session.user.id);
+    return NextResponse.json(
+      { error: "Failed to queue this document for processing. Please try again." },
+      { status: 500 },
+    );
+  }
+
+  const { storageKey: _storageKey, ...publicDocument } = result.document;
+  return NextResponse.json({ document: publicDocument }, { status: 201 });
 }

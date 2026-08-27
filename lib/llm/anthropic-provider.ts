@@ -55,6 +55,12 @@ export class AnthropicLLMProvider implements LLMProvider {
       throw new Error("The LLM declined to generate a PRD for this document.");
     }
 
+    if (message.stop_reason === "max_tokens") {
+      throw new Error(
+        `The generated PRD was truncated at the ${MAX_OUTPUT_TOKENS}-token output limit. Try regenerating, or shorten the source document.`,
+      );
+    }
+
     const textBlock = message.content.find((block) => block.type === "text");
     if (!textBlock || textBlock.type !== "text") {
       throw new Error("The LLM response contained no text content.");

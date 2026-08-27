@@ -15,6 +15,43 @@ export type DocumentWithPrdStatus = {
   } | null;
 };
 
+type Phase =
+  | { kind: "parsing" }
+  | { kind: "parse-failed"; error: string | null }
+  | { kind: "generating" }
+  | { kind: "generate-failed"; error: string | null }
+  | { kind: "ready" };
+
+/**
+ * The single source of truth for "what state is this document in" — both
+ * the polling interval decision and the rendered UI derive from this, so
+ * they can't drift out of sync the way two independent status checks can.
+ */
+function derivePhase(document: DocumentWithPrdStatus): Phase {
+  if (document.status === "PENDING" || document.status === "PROCESSING") {
+    return { kind: "parsing" };
+  }
+  if (document.status === "FAILED") {
+    return { kind: "parse-failed", error: document.errorMessage };
+  }
+  // document.status === "COMPLETE"
+  if (
+    !document.prd ||
+    document.prd.status === "PENDING" ||
+    document.prd.status === "PROCESSING"
+  ) {
+    return { kind: "generating" };
+  }
+  if (document.prd.status === "FAILED") {
+    return { kind: "generate-failed", error: document.prd.errorMessage };
+  }
+  return { kind: "ready" };
+}
+
+function isTerminal(phase: Phase): boolean {
+  return phase.kind !== "parsing" && phase.kind !== "generating";
+}
+
 async function fetchDocument(url: string): Promise<DocumentWithPrdStatus> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -22,15 +59,6 @@ async function fetchDocument(url: string): Promise<DocumentWithPrdStatus> {
   }
   const body = await response.json();
   return body.document;
-}
-
-function isTerminal(document: DocumentWithPrdStatus): boolean {
-  if (document.status === "PENDING" || document.status === "PROCESSING") {
-    return false;
-  }
-  if (document.status === "FAILED") return true;
-  if (!document.prd) return false;
-  return document.prd.status === "COMPLETE" || document.prd.status === "FAILED";
 }
 
 export function ProcessingStatusView({
@@ -44,13 +72,17 @@ export function ProcessingStatusView({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
 
-  const { data } = useSWR(`/api/documents/${documentId}`, fetchDocument, {
-    fallbackData: initialDocument,
-    refreshInterval: (latest) =>
-      latest && isTerminal(latest) ? 0 : 2500,
-  });
+  const { data, mutate } = useSWR(
+    `/api/documents/${documentId}`,
+    fetchDocument,
+    {
+      fallbackData: initialDocument,
+      refreshInterval: (latest) =>
+        latest && isTerminal(derivePhase(latest)) ? 0 : 2500,
+    },
+  );
 
-  const current = data ?? initialDocument;
+  const phase = derivePhase(data ?? initialDocument);
 
   async function runAction(path: string, confirmMessage?: string) {
     if (confirmMessage && !window.confirm(confirmMessage)) {
@@ -69,62 +101,65 @@ export function ProcessingStatusView({
       return;
     }
 
+    // Force a fresh fetch — without this, the SWR cache still holds the
+    // terminal (FAILED/ready) state that stopped polling, so refetching
+    // is what makes polling resume once the new state is non-terminal.
+    await mutate();
     router.refresh();
   }
 
-  if (current.status === "PENDING" || current.status === "PROCESSING") {
-    return <StatusBlock label="Parsing document…" />;
-  }
+  switch (phase.kind) {
+    case "parsing":
+      return <StatusBlock label="Parsing document…" />;
 
-  if (current.status === "FAILED") {
-    return (
-      <StatusBlock
-        label="Parsing failed"
-        error={current.errorMessage}
-        action={{
-          label: "Retry",
-          pending: actionPending,
-          onClick: () => runAction("retry"),
-        }}
-        actionError={actionError}
-      />
-    );
-  }
+    case "parse-failed":
+      return (
+        <StatusBlock
+          label="Parsing failed"
+          error={phase.error}
+          action={{
+            label: "Retry",
+            pending: actionPending,
+            onClick: () => runAction("retry"),
+          }}
+          actionError={actionError}
+        />
+      );
 
-  if (!current.prd || current.prd.status === "PENDING" || current.prd.status === "PROCESSING") {
-    return <StatusBlock label="Generating PRD…" />;
-  }
+    case "generating":
+      return <StatusBlock label="Generating PRD…" />;
 
-  if (current.prd.status === "FAILED") {
-    return (
-      <StatusBlock
-        label="PRD generation failed"
-        error={current.prd.errorMessage}
-        action={{
-          label: "Retry",
-          pending: actionPending,
-          onClick: () => runAction("retry"),
-        }}
-        actionError={actionError}
-      />
-    );
-  }
+    case "generate-failed":
+      return (
+        <StatusBlock
+          label="PRD generation failed"
+          error={phase.error}
+          action={{
+            label: "Retry",
+            pending: actionPending,
+            onClick: () => runAction("retry"),
+          }}
+          actionError={actionError}
+        />
+      );
 
-  return (
-    <StatusBlock
-      label="PRD ready"
-      action={{
-        label: "Regenerate",
-        pending: actionPending,
-        onClick: () =>
-          runAction(
-            "regenerate",
-            "Regenerate the PRD? This will overwrite the current content.",
-          ),
-      }}
-      actionError={actionError}
-    />
-  );
+    case "ready":
+      return (
+        <StatusBlock
+          label="PRD ready"
+          action={{
+            label: "Regenerate",
+            pending: actionPending,
+            onClick: () =>
+              runAction(
+                "regenerate",
+                "Regenerate the PRD? This will overwrite the current content.",
+              ),
+          }}
+          actionError={actionError}
+        />
+      );
+  }
 }
 
 function StatusBlock({
