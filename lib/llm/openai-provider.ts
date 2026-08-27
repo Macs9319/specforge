@@ -8,10 +8,16 @@ const MAX_OUTPUT_TOKENS = 16000;
 export class OpenAIProvider implements LLMProvider {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly effort: "low" | "medium" | "high" | "xhigh" | "max";
 
-  constructor(client: OpenAI, model: string) {
+  constructor(
+    client: OpenAI,
+    model: string,
+    effort: "low" | "medium" | "high" | "xhigh" | "max",
+  ) {
     this.client = client;
     this.model = model;
+    this.effort = effort;
   }
 
   async generatePrd(params: LLMGenerateParams): Promise<LLMGenerateResult> {
@@ -20,6 +26,7 @@ export class OpenAIProvider implements LLMProvider {
       completion = await this.client.chat.completions.create({
         model: this.model,
         max_completion_tokens: MAX_OUTPUT_TOKENS,
+        reasoning_effort: this.effort,
         messages: [
           {
             role: "system",
@@ -48,7 +55,7 @@ export class OpenAIProvider implements LLMProvider {
       throw new Error("The LLM response contained no choices.");
     }
 
-    if (choice.finish_reason === "content_filter") {
+    if (choice.finish_reason === "content_filter" || choice.message.refusal) {
       throw new Error("The LLM declined to generate a PRD for this document.");
     }
 
@@ -74,5 +81,5 @@ export class OpenAIProvider implements LLMProvider {
 
 export function createOpenAIProviderFromEnv(): OpenAIProvider {
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  return new OpenAIProvider(client, env.OPENAI_MODEL);
+  return new OpenAIProvider(client, env.OPENAI_MODEL, env.LLM_EFFORT);
 }
