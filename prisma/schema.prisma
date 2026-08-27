@@ -22,13 +22,15 @@ enum ProcessingStatus {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  documents    Document[]
+  id               String            @id @default(cuid())
+  email            String            @unique
+  passwordHash     String
+  name             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  documents        Document[]
+  prds             Prd[]
+  generationEvents GenerationEvent[]
 }
 
 model Document {
@@ -42,8 +44,44 @@ model Document {
   fileSizeBytes    Int
   storageKey       String
   status           ProcessingStatus @default(PENDING)
+  extractedText    String?          @db.Text
+  errorMessage     String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  prd              Prd?
 
   @@index([userId])
+}
+
+model Prd {
+  id           String           @id @default(cuid())
+  documentId   String           @unique
+  document     Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       ProcessingStatus @default(PENDING)
+  content      String?          @db.Text
+  modelId      String?
+  inputTokens  Int?
+  outputTokens Int?
+  errorMessage String?
+  generatedAt  DateTime?
+  editedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([userId])
+}
+
+// One row per PRD generation attempt (initial upload or explicit regenerate),
+// used to enforce the per-user daily generation cap. A manual "Retry" after
+// a failure doesn't create a new row, since it's completing an attempt
+// that was already counted.
+model GenerationEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

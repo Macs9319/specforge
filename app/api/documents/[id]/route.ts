@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { findOwnedDocument } from "@/lib/documents/queries";
+import { findOwnedDocument, findOwnedDocumentWithPrd } from "@/lib/documents/queries";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { getStorageProvider } from "@/lib/storage";
@@ -15,7 +15,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const document = await findOwnedDocument(prisma, session.user.id, id);
+  const document = await findOwnedDocumentWithPrd(prisma, session.user.id, id);
 
   if (!document) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

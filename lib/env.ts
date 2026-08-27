@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+// Docker Compose's `${VAR:-}` substitution sets an env var to an empty
+// string when the shell doesn't have it set, rather than omitting the key
+// entirely — so a plain `.optional()` string isn't enough to make a var
+// truly optional there. This normalizes "" to undefined first.
+function optionalString(schema: z.ZodString) {
+  return z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    schema.optional(),
+  );
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   NODE_ENV: z
@@ -9,7 +20,7 @@ const envSchema = z.object({
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
   AUTH_SECRET: z.string().min(32),
-  S3_ENDPOINT: z.string().url().optional(),
+  S3_ENDPOINT: optionalString(z.string().url()),
   S3_REGION: z.string().min(1).default("us-east-1"),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY_ID: z.string().min(1),
@@ -18,6 +29,22 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  REDIS_URL: z.string().url(),
+  LLM_PROVIDER: z.enum(["anthropic", "fake"]).default("anthropic"),
+  ANTHROPIC_API_KEY: optionalString(z.string().min(1)),
+  ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
+  LLM_EFFORT: z
+    .enum(["low", "medium", "high", "xhigh", "max"])
+    .default("high"),
+  GENERATION_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
+}).superRefine((value, ctx) => {
+  if (value.LLM_PROVIDER === "anthropic" && !value.ANTHROPIC_API_KEY) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["ANTHROPIC_API_KEY"],
+      message: "ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic",
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DeleteDocumentButton } from "@/components/delete-document-button";
 import { DocumentStatusBadge } from "@/components/document-status-badge";
 import { UploadDropzone } from "@/components/upload-dropzone";
@@ -31,13 +32,13 @@ export default async function DashboardPage() {
                 key={document.id}
                 className="flex items-center justify-between p-4"
               >
-                <div>
-                  <p className="font-medium">{document.title}</p>
+                <Link href={`/documents/${document.id}`} className="min-w-0">
+                  <p className="font-medium underline">{document.title}</p>
                   <p className="text-sm text-gray-500">
                     {document.createdAt.toLocaleDateString()} ·{" "}
                     {(document.fileSizeBytes / 1024).toFixed(0)} KB
                   </p>
-                </div>
+                </Link>
                 <div className="flex items-center gap-4">
                   <DocumentStatusBadge status={document.status} />
                   <DeleteDocumentButton documentId={document.id} />

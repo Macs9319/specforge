@@ -1,4 +1,4 @@
-import type { Document, PrismaClient } from "../../generated/prisma";
+import type { Document, Prd, PrismaClient } from "../../generated/prisma";
 
 export function listUserDocuments(
   prisma: Pick<PrismaClient, "document">,
@@ -23,6 +23,23 @@ export async function findOwnedDocument(
 ): Promise<Document | null> {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
+  });
+
+  if (!document || document.userId !== userId) {
+    return null;
+  }
+
+  return document;
+}
+
+export async function findOwnedDocumentWithPrd(
+  prisma: Pick<PrismaClient, "document">,
+  userId: string,
+  documentId: string,
+): Promise<(Document & { prd: Prd | null }) | null> {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { prd: true },
   });
 
   if (!document || document.userId !== userId) {

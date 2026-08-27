@@ -16,7 +16,9 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "worker": "tsx worker/index.ts",
+    "worker:dev": "tsx watch worker/index.ts"
   },
   "repository": {
     "type": "git",
@@ -29,17 +31,23 @@
   },
   "homepage": "https://github.com/Macs9319/specforge#readme",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
     "@aws-sdk/client-s3": "^3.1119.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.3.1",
     "dotenv": "^17.4.2",
+    "ioredis": "^6.0.0",
+    "mammoth": "^1.12.1",
     "next": "^16.3.3",
     "next-auth": "^5.0.0-beta.32",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "swr": "^2.5.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -54,6 +62,7 @@
     "postcss": "^8.5.26",
     "prisma": "^7.10.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },

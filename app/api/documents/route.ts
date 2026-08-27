@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { listUserDocuments } from "@/lib/documents/queries";
+import {
+  hasRemainingGenerationQuota,
+  recordGenerationEvent,
+} from "@/lib/documents/rate-limit";
 import { uploadDocument } from "@/lib/documents/upload-document";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { enqueueProcessDocumentJob } from "@/lib/queue";
 import { getStorageProvider } from "@/lib/storage";
 
 export async function GET() {
@@ -20,6 +26,20 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const withinQuota = await hasRemainingGenerationQuota(
+    prisma,
+    session.user.id,
+    env.GENERATION_DAILY_LIMIT,
+  );
+  if (!withinQuota) {
+    return NextResponse.json(
+      {
+        error: `You've reached your daily limit of ${env.GENERATION_DAILY_LIMIT} PRD generations. Try again tomorrow.`,
+      },
+      { status: 429 },
+    );
   }
 
   const formData = await request.formData().catch(() => null);
@@ -55,6 +75,9 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  await recordGenerationEvent(prisma, session.user.id);
+  await enqueueProcessDocumentJob(result.document.id);
 
   return NextResponse.json({ document: result.document }, { status: 201 });
 }
