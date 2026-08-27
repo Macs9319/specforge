@@ -10,14 +10,16 @@ x-app-env: &app-env
   S3_SECRET_ACCESS_KEY: minioadmin
   S3_FORCE_PATH_STYLE: "true"
   REDIS_URL: redis://redis:6379
-  # No real Anthropic key baked into version-controlled compose config —
-  # defaults to the fake provider. Override LLM_PROVIDER/ANTHROPIC_API_KEY
-  # in your shell environment (they take precedence over this file) to use
-  # the real Anthropic adapter.
+  # No real Anthropic/OpenAI key baked into version-controlled compose
+  # config — defaults to the fake provider. Override LLM_PROVIDER and
+  # ANTHROPIC_API_KEY or OPENAI_API_KEY in your shell environment (they take
+  # precedence over this file) to use a real adapter.
   LLM_PROVIDER: "${LLM_PROVIDER:-fake}"
   ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
   ANTHROPIC_MODEL: claude-sonnet-5
   LLM_EFFORT: high
+  OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+  OPENAI_MODEL: gpt-5.4
   GENERATION_DAILY_LIMIT: "10"
 
 services:

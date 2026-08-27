@@ -30,12 +30,14 @@ const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   REDIS_URL: z.string().url(),
-  LLM_PROVIDER: z.enum(["anthropic", "fake"]).default("anthropic"),
+  LLM_PROVIDER: z.enum(["anthropic", "openai", "fake"]).default("anthropic"),
   ANTHROPIC_API_KEY: optionalString(z.string().min(1)),
   ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
   LLM_EFFORT: z
     .enum(["low", "medium", "high", "xhigh", "max"])
     .default("high"),
+  OPENAI_API_KEY: optionalString(z.string().min(1)),
+  OPENAI_MODEL: z.string().min(1).default("gpt-5.4"),
   GENERATION_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
 }).superRefine((value, ctx) => {
   if (value.LLM_PROVIDER === "anthropic" && !value.ANTHROPIC_API_KEY) {
@@ -43,6 +45,13 @@ const envSchema = z.object({
       code: "custom",
       path: ["ANTHROPIC_API_KEY"],
       message: "ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic",
+    });
+  }
+  if (value.LLM_PROVIDER === "openai" && !value.OPENAI_API_KEY) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["OPENAI_API_KEY"],
+      message: "OPENAI_API_KEY is required when LLM_PROVIDER=openai",
     });
   }
 });

@@ -26,7 +26,7 @@ describe("loadEnv", () => {
     expect(() => loadEnv({})).toThrow(/DATABASE_URL/);
   });
 
-  it("defaults NODE_ENV, LOG_LEVEL, S3_REGION, S3_FORCE_PATH_STYLE, LLM_PROVIDER, ANTHROPIC_MODEL, LLM_EFFORT, and GENERATION_DAILY_LIMIT when not provided", () => {
+  it("defaults NODE_ENV, LOG_LEVEL, S3_REGION, S3_FORCE_PATH_STYLE, LLM_PROVIDER, ANTHROPIC_MODEL, LLM_EFFORT, OPENAI_MODEL, and GENERATION_DAILY_LIMIT when not provided", () => {
     const env = loadEnv({
       DATABASE_URL: validEnv.DATABASE_URL,
       AUTH_SECRET: validEnv.AUTH_SECRET,
@@ -44,6 +44,7 @@ describe("loadEnv", () => {
     expect(env.LLM_PROVIDER).toBe("anthropic");
     expect(env.ANTHROPIC_MODEL).toBe("claude-sonnet-5");
     expect(env.LLM_EFFORT).toBe("high");
+    expect(env.OPENAI_MODEL).toBe("gpt-5.4");
     expect(env.GENERATION_DAILY_LIMIT).toBe(10);
   });
 
@@ -100,5 +101,29 @@ describe("loadEnv", () => {
   it("treats an empty-string S3_ENDPOINT the same as an absent one", () => {
     const env = loadEnv({ ...validEnv, S3_ENDPOINT: "" });
     expect(env.S3_ENDPOINT).toBeUndefined();
+  });
+
+  it("requires OPENAI_API_KEY when LLM_PROVIDER is openai", () => {
+    expect(() =>
+      loadEnv({ ...validEnv, LLM_PROVIDER: "openai" }),
+    ).toThrow(/OPENAI_API_KEY/);
+  });
+
+  it("does not require OPENAI_API_KEY when LLM_PROVIDER is anthropic (the default)", () => {
+    expect(() => loadEnv(validEnv)).not.toThrow();
+  });
+
+  it("treats an empty-string OPENAI_API_KEY the same as an absent one (docker-compose's ${VAR:-} sets '', not undefined)", () => {
+    expect(() =>
+      loadEnv({
+        ...validEnv,
+        LLM_PROVIDER: "openai",
+        OPENAI_API_KEY: "sk-test-key",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      loadEnv({ ...validEnv, LLM_PROVIDER: "openai", OPENAI_API_KEY: "" }),
+    ).toThrow(/OPENAI_API_KEY/);
   });
 });

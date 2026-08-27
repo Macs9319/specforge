@@ -14,7 +14,7 @@ docker compose up
 
 Open http://localhost:3000. Everything — the app, the background worker, Postgres, Redis, and MinIO — starts together, and the database is set up automatically.
 
-By default it uses a **fake LLM provider** (no API key needed), so you can try the whole upload → PRD flow immediately. To use the real Anthropic model, set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=<your key>` before running the command above.
+By default it uses a **fake LLM provider** (no API key needed), so you can try the whole upload → PRD flow immediately. To use a real model, set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=<your key>`, or `LLM_PROVIDER=openai` and `OPENAI_API_KEY=<your key>`, before running the command above.
 
 ## Local development
 
