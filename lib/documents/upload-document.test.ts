@@ -95,4 +95,24 @@ describe("uploadDocument", () => {
     expect(prefix).toBe("user_1");
     expect(rest).toHaveLength(1);
   });
+
+  it("removes the uploaded object if the database insert fails", async () => {
+    const storage = new FakeStorageProvider();
+    const create = vi.fn().mockRejectedValue(new Error("connection lost"));
+
+    await expect(
+      uploadDocument(
+        { storage, prisma: { document: { create } } as never },
+        {
+          userId: "user_1",
+          filename: "process-flow.pdf",
+          mimeType: "application/pdf",
+          buffer: Buffer.from("%PDF-1.4 fake pdf contents"),
+        },
+      ),
+    ).rejects.toThrow("connection lost");
+
+    const [[createArgs]] = create.mock.calls;
+    expect(storage.has(createArgs.data.storageKey)).toBe(false);
+  });
 });

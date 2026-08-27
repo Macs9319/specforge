@@ -42,18 +42,25 @@ export async function uploadDocument(
   const storageKey = `${input.userId}/${randomUUID()}-${sanitizeFilename(input.filename)}`;
   await deps.storage.putObject(storageKey, input.buffer, input.mimeType);
 
-  const document = await deps.prisma.document.create({
-    data: {
-      userId: input.userId,
-      title: input.filename,
-      originalFilename: input.filename,
-      fileType,
-      mimeType: input.mimeType,
-      fileSizeBytes: input.buffer.byteLength,
-      storageKey,
-      status: "PENDING",
-    },
-  });
+  let document;
+  try {
+    document = await deps.prisma.document.create({
+      data: {
+        userId: input.userId,
+        title: input.filename,
+        originalFilename: input.filename,
+        fileType,
+        mimeType: input.mimeType,
+        fileSizeBytes: input.buffer.byteLength,
+        storageKey,
+        status: "PENDING",
+      },
+    });
+  } catch (error) {
+    // Don't leave an orphaned object with no Document row referencing it.
+    await deps.storage.deleteObject(storageKey).catch(() => undefined);
+    throw error;
+  }
 
   return {
     ok: true,

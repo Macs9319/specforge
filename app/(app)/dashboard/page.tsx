@@ -1,15 +1,13 @@
-import { auth } from "@/auth";
 import { DeleteDocumentButton } from "@/components/delete-document-button";
 import { DocumentStatusBadge } from "@/components/document-status-badge";
 import { UploadDropzone } from "@/components/upload-dropzone";
+import { listUserDocuments } from "@/lib/documents/queries";
+import { requireSession } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/prisma";
 
 export default async function DashboardPage() {
-  const session = await auth();
-  const documents = await prisma.document.findMany({
-    where: { userId: session!.user.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const session = await requireSession();
+  const documents = await listUserDocuments(prisma, session.user.id);
 
   return (
     <div className="flex flex-col gap-8">

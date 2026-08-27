@@ -6,6 +6,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { env } from "../env";
+import { logger } from "../logger";
 import type { StorageProvider } from "./types";
 
 export class S3StorageProvider implements StorageProvider {
@@ -31,7 +32,17 @@ export class S3StorageProvider implements StorageProvider {
           ) {
             return;
           }
-          throw error;
+          // Don't cache a hard failure — a transient error, or a
+          // least-privilege production role that can't create buckets
+          // against a bucket already provisioned by IaC, shouldn't
+          // permanently break every future upload. Log it, let the next
+          // call retry, and let the real put/get/delete fail naturally
+          // if the bucket genuinely isn't usable.
+          this.bucketReady = undefined;
+          logger.warn(
+            { err: error, bucket: this.bucket },
+            "Could not confirm/create storage bucket; continuing optimistically",
+          );
         });
     }
     return this.bucketReady;

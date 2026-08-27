@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
-import { auth, signOut } from "@/auth";
+import { signOut } from "@/auth";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Auth is gated here per Next.js's own guidance to check session in each
 // server function/layout rather than centralizing it in proxy/middleware
@@ -10,11 +10,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    redirect("/login");
-  }
+  const session = await requireSession();
 
   return (
     <div className="min-h-screen">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { listUserDocuments } from "@/lib/documents/queries";
 import { uploadDocument } from "@/lib/documents/upload-document";
 import { prisma } from "@/lib/prisma";
 import { getStorageProvider } from "@/lib/storage";
@@ -10,10 +11,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const documents = await prisma.document.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const documents = await listUserDocuments(prisma, session.user.id);
 
   return NextResponse.json({ documents });
 }
