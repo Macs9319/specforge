@@ -18,7 +18,7 @@ Then open http://localhost:3000.
 - Redis: `localhost:6379`
 - MinIO API: `localhost:9000`, console: `localhost:9001` (user/password: `minioadmin`)
 
-The `web` service runs `prisma generate` then `next dev` on start, so schema changes are picked up automatically on the next container restart.
+The `web` service runs `prisma migrate deploy` then `prisma generate` then `next dev` on start — pending migrations are applied automatically, including against a completely fresh database, so a clean `docker compose up` needs no manual setup step. `web` and `worker` both expose a health check (`GET /api/health` on `web`; an internal-only `/health` on port 3001 for `worker`) that verifies Postgres and Redis connectivity; `worker` doesn't start until `web` reports healthy, since `web` is what runs the migration.
 
 `node_modules` is kept in a separate named volume (not the bind mount) so native dependencies match the container's Linux/musl environment instead of your host's. That volume is only populated from the image the first time it's created, so **after changing `package.json`**, rebuild it explicitly:
 

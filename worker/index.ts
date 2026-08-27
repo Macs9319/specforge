@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { Worker } from "bullmq";
+import { createServer } from "node:http";
+import { checkHealth } from "../lib/health";
 import { getLLMProvider } from "../lib/llm";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/prisma";
@@ -94,9 +96,40 @@ worker.on("error", (err) => {
   logger.error({ err }, "Worker connection error");
 });
 
+// Not exposed outside the docker network — this is purely so
+// docker-compose (or any orchestrator) has something to poll, matching
+// what /api/health gives the web service.
+const HEALTH_PORT = 3001;
+
+const healthServer = createServer((req, res) => {
+  if (req.url !== "/health") {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+
+  checkHealth()
+    .then((result) => {
+      res.writeHead(result.healthy ? 200 : 503, {
+        "Content-Type": "application/json",
+      });
+      res.end(JSON.stringify(result));
+    })
+    .catch((error: unknown) => {
+      logger.error({ err: error }, "Health check itself threw");
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ healthy: false }));
+    });
+});
+
+healthServer.listen(HEALTH_PORT, () => {
+  logger.info({ port: HEALTH_PORT }, "Worker health endpoint listening");
+});
+
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Shutting down worker");
   await worker.close();
+  healthServer.close();
   process.exit(0);
 }
 
