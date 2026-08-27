@@ -129,7 +129,7 @@ healthServer.listen(HEALTH_PORT, () => {
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Shutting down worker");
   await worker.close();
-  healthServer.close();
+  await new Promise<void>((resolve) => healthServer.close(() => resolve()));
   process.exit(0);
 }
 

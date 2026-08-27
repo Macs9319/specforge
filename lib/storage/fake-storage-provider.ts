@@ -30,6 +30,10 @@ export class FakeStorageProvider implements StorageProvider {
     this.objects.delete(key);
   }
 
+  async healthCheck(): Promise<boolean> {
+    return true;
+  }
+
   has(key: string): boolean {
     return this.objects.has(key);
   }
