@@ -23,7 +23,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (prd.content === null) {
+  if (prd.currentVersion === null) {
     return NextResponse.json(
       { error: "There's nothing to edit yet." },
       { status: 400 },
@@ -49,12 +49,23 @@ export async function PATCH(
     );
   }
 
-  // A conditional update rather than a plain one: if a regenerate slips
-  // in between the status check above and this write, the status is no
-  // longer COMPLETE/FAILED and the update matches zero rows instead of
-  // silently clobbering fresh, in-flight (or freshly-written) content.
-  const { count } = await prisma.prd.updateMany({
-    where: { id, status: { notIn: ["PENDING", "PROCESSING"] } },
+  // Edits mutate the current version's content in place rather than
+  // creating a new version — this preserves the existing editedAt
+  // semantic of "touching" the live document, distinct from a new
+  // generation. A conditional update rather than a plain one: it also
+  // re-checks that this is still the current version and that the PRD is
+  // still not PENDING/PROCESSING, so if a regenerate slips in between the
+  // read above and this write, the update matches zero rows instead of
+  // silently landing on a version that's no longer current.
+  const { count } = await prisma.prdVersion.updateMany({
+    where: {
+      id: prd.currentVersion.id,
+      prd: {
+        id: prd.id,
+        status: { notIn: ["PENDING", "PROCESSING"] },
+        currentVersionId: prd.currentVersion.id,
+      },
+    },
     data: { content: parsed.data.content, editedAt: new Date() },
   });
 
@@ -68,6 +79,8 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.prd.findUniqueOrThrow({ where: { id } });
-  return NextResponse.json({ prd: updated });
+  const updatedVersion = await prisma.prdVersion.findUniqueOrThrow({
+    where: { id: prd.currentVersion.id },
+  });
+  return NextResponse.json({ prd: { editedAt: updatedVersion.editedAt } });
 }

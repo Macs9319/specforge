@@ -75,13 +75,15 @@ describe("processDocumentJob", () => {
 
     const prd = await prisma.prd.findUniqueOrThrow({
       where: { documentId: document.id },
+      include: { currentVersion: true },
     });
     expect(prd.status).toBe("COMPLETE");
-    expect(prd.content).toBe("## Overview\n\nGenerated PRD.");
-    expect(prd.modelId).toBe("fake-model");
-    expect(prd.inputTokens).toBe(42);
-    expect(prd.outputTokens).toBe(84);
-    expect(prd.generatedAt).not.toBeNull();
+    expect(prd.currentVersion?.versionNumber).toBe(1);
+    expect(prd.currentVersion?.content).toBe("## Overview\n\nGenerated PRD.");
+    expect(prd.currentVersion?.modelId).toBe("fake-model");
+    expect(prd.currentVersion?.inputTokens).toBe(42);
+    expect(prd.currentVersion?.outputTokens).toBe(84);
+    expect(prd.currentVersion?.generatedAt).not.toBeNull();
 
     expect(llm.calls).toEqual([
       {
@@ -91,18 +93,28 @@ describe("processDocumentJob", () => {
     ]);
   });
 
-  it("clears editedAt on a fresh generation, so a regenerate doesn't leave a stale edit timestamp", async () => {
+  it("regenerating creates a new version rather than overwriting the previous one, and the new version has no stale edit timestamp", async () => {
     const { document } = await createTestUserAndDocument({
       extractedText: "Already parsed text.",
     });
-    await prisma.prd.create({
+    const prd = await prisma.prd.create({
       data: {
         documentId: document.id,
         userId: document.userId,
         status: "PENDING",
+      },
+    });
+    const previousVersion = await prisma.prdVersion.create({
+      data: {
+        prdId: prd.id,
+        versionNumber: 1,
         content: "old hand-edited content",
         editedAt: new Date(),
       },
+    });
+    await prisma.prd.update({
+      where: { id: prd.id },
+      data: { currentVersionId: previousVersion.id },
     });
 
     await processDocumentJob(
@@ -110,10 +122,21 @@ describe("processDocumentJob", () => {
       { documentId: document.id },
     );
 
-    const prd = await prisma.prd.findUniqueOrThrow({
+    const updatedPrd = await prisma.prd.findUniqueOrThrow({
       where: { documentId: document.id },
+      include: { currentVersion: true },
     });
-    expect(prd.editedAt).toBeNull();
+    expect(updatedPrd.currentVersion?.versionNumber).toBe(2);
+    expect(updatedPrd.currentVersion?.editedAt).toBeNull();
+    expect(updatedPrd.currentVersion?.id).not.toBe(previousVersion.id);
+
+    // The previous version is still there, untouched — this is the whole
+    // point of versioning: regenerating doesn't destroy prior content.
+    const stillThere = await prisma.prdVersion.findUniqueOrThrow({
+      where: { id: previousVersion.id },
+    });
+    expect(stillThere.content).toBe("old hand-edited content");
+    expect(stillThere.editedAt).not.toBeNull();
   });
 
   it("skips parsing when extractedText already exists (retry/regenerate)", async () => {

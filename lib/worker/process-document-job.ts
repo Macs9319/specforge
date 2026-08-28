@@ -5,7 +5,7 @@ import type { PrismaClient } from "../../generated/prisma";
 import { ProcessingStageError } from "./processing-stage-error";
 
 export type ProcessDocumentJobDeps = {
-  prisma: Pick<PrismaClient, "document" | "prd">;
+  prisma: Pick<PrismaClient, "document" | "prd" | "prdVersion" | "$transaction">;
   storage: StorageProvider;
   llm: LLMProvider;
 };
@@ -64,7 +64,7 @@ export async function processDocumentJob(
     });
   }
 
-  await deps.prisma.prd.upsert({
+  const prd = await deps.prisma.prd.upsert({
     where: { documentId: document.id },
     create: {
       documentId: document.id,
@@ -80,20 +80,31 @@ export async function processDocumentJob(
       documentText: extractedText,
     });
 
-    await deps.prisma.prd.update({
-      where: { documentId: document.id },
-      data: {
-        status: "COMPLETE",
-        content: result.markdown,
-        modelId: result.modelId,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        generatedAt: new Date(),
-        // Fresh AI-generated content supersedes any prior manual edit —
-        // don't show a stale "last edited" timestamp against it.
-        editedAt: null,
-        errorMessage: null,
-      },
+    await deps.prisma.$transaction(async (tx) => {
+      const versionCount = await tx.prdVersion.count({
+        where: { prdId: prd.id },
+      });
+
+      const version = await tx.prdVersion.create({
+        data: {
+          prdId: prd.id,
+          versionNumber: versionCount + 1,
+          content: result.markdown,
+          modelId: result.modelId,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          generatedAt: new Date(),
+        },
+      });
+
+      await tx.prd.update({
+        where: { id: prd.id },
+        data: {
+          status: "COMPLETE",
+          currentVersionId: version.id,
+          errorMessage: null,
+        },
+      });
     });
   } catch (error) {
     throw new ProcessingStageError(

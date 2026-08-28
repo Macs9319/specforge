@@ -60,17 +60,49 @@ model Prd {
   userId       String
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   status       ProcessingStatus @default(PENDING)
+  errorMessage String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  // Superseded by PrdVersion (below): a successful generation or an edit
+  // now creates/updates a PrdVersion row instead of writing here directly.
+  // Left in place, unused, so the "contract" migration that drops them can
+  // ship in a later release once the PrdVersion path is proven.
   content      String?          @db.Text
   modelId      String?
   inputTokens  Int?
   outputTokens Int?
-  errorMessage String?
   generatedAt  DateTime?
   editedAt     DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+
+  versions         PrdVersion[] @relation("PrdVersions")
+  currentVersionId String?      @unique
+  currentVersion   PrdVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
 
   @@index([userId])
+}
+
+// One row per successful generation or edit. Prd.currentVersionId points at
+// whichever row is "live"; regenerating creates a new row and repoints it,
+// so the previous content is never destroyed. A FAILED generation attempt
+// produces no content and therefore no version row.
+model PrdVersion {
+  id            String    @id @default(cuid())
+  prdId         String
+  prd           Prd       @relation("PrdVersions", fields: [prdId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  content       String    @db.Text
+  modelId       String?
+  inputTokens   Int?
+  outputTokens  Int?
+  generatedAt   DateTime?
+  editedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  currentFor    Prd?      @relation("CurrentVersion")
+
+  @@unique([prdId, versionNumber])
+  @@index([prdId])
 }
 
 // One row per PRD generation attempt (initial upload or explicit regenerate),

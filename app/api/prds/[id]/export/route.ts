@@ -15,14 +15,14 @@ export async function GET(
 
   const { id } = await params;
   const prd = await findOwnedPrdWithDocument(prisma, session.user.id, id);
-  if (!prd || prd.content === null) {
+  if (!prd || prd.currentVersion === null) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const title = prd.document.title.replace(/\.[^.]+$/, "");
   const filename = `${sanitizeFilename(title) || "prd"}.md`;
 
-  return new NextResponse(prd.content, {
+  return new NextResponse(prd.currentVersion.content, {
     status: 200,
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",

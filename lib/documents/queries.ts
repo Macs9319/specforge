@@ -1,4 +1,15 @@
-import type { Document, Prd, PrismaClient } from "../../generated/prisma";
+import type { Document, PrismaClient, ProcessingStatus } from "../../generated/prisma";
+
+// A stable "current PRD" read shape for consumers that only need the live
+// content, not the version history — the versioned storage underneath
+// (Prd.currentVersion) stays an implementation detail behind this.
+export type CurrentPrdSnapshot = {
+  id: string;
+  status: ProcessingStatus;
+  errorMessage: string | null;
+  content: string | null;
+  editedAt: Date | null;
+};
 
 export function listUserDocuments(
   prisma: Pick<PrismaClient, "document">,
@@ -36,15 +47,27 @@ export async function findOwnedDocumentWithPrd(
   prisma: Pick<PrismaClient, "document">,
   userId: string,
   documentId: string,
-): Promise<(Document & { prd: Prd | null }) | null> {
+): Promise<(Document & { prd: CurrentPrdSnapshot | null }) | null> {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { prd: true },
+    include: { prd: { include: { currentVersion: true } } },
   });
 
   if (!document || document.userId !== userId) {
     return null;
   }
 
-  return document;
+  const { prd, ...rest } = document;
+  return {
+    ...rest,
+    prd: prd
+      ? {
+          id: prd.id,
+          status: prd.status,
+          errorMessage: prd.errorMessage,
+          content: prd.currentVersion?.content ?? null,
+          editedAt: prd.currentVersion?.editedAt ?? null,
+        }
+      : null,
+  };
 }
