@@ -81,9 +81,39 @@ export async function processDocumentJob(
     });
 
     await deps.prisma.$transaction(async (tx) => {
-      const versionCount = await tx.prdVersion.count({
+      // Locks this Prd row for the rest of the transaction, so a
+      // concurrently-running job for the same document (BullMQ can
+      // redeliver a stalled job, or two rapid Regenerate clicks can both
+      // pass the route's status check before either writes PROCESSING)
+      // can't compute the same next versionNumber below — it blocks here
+      // until this transaction commits, then sees this version counted.
+      await tx.$queryRaw`SELECT id FROM "Prd" WHERE id = ${prd.id} FOR UPDATE`;
+
+      let versionCount = await tx.prdVersion.count({
         where: { prdId: prd.id },
       });
+
+      // Migration safety net: this Prd predates the PrdVersion migration
+      // (currentVersionId is still null) and hasn't been backfilled yet,
+      // but its legacy `content` column holds real prior content — preserve
+      // it as version 1 before writing the new generation, so a regenerate
+      // that lands between deploying this migration and running
+      // scripts/backfill-prd-versions.ts doesn't silently discard it.
+      if (versionCount === 0 && prd.content !== null) {
+        await tx.prdVersion.create({
+          data: {
+            prdId: prd.id,
+            versionNumber: 1,
+            content: prd.content,
+            modelId: prd.modelId,
+            inputTokens: prd.inputTokens,
+            outputTokens: prd.outputTokens,
+            generatedAt: prd.generatedAt,
+            editedAt: prd.editedAt,
+          },
+        });
+        versionCount = 1;
+      }
 
       const version = await tx.prdVersion.create({
         data: {

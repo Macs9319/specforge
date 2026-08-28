@@ -139,6 +139,44 @@ describe("processDocumentJob", () => {
     expect(stillThere.editedAt).not.toBeNull();
   });
 
+  it("preserves un-backfilled legacy content as version 1 before writing a regenerate, when currentVersionId is still null", async () => {
+    const { document } = await createTestUserAndDocument({
+      extractedText: "Already parsed text.",
+    });
+    // Simulates a Prd row from before the PrdVersion migration's backfill
+    // script has run: real content lives only in the legacy column.
+    await prisma.prd.create({
+      data: {
+        documentId: document.id,
+        userId: document.userId,
+        status: "PENDING",
+        content: "pre-migration legacy content",
+        modelId: "legacy-model",
+      },
+    });
+
+    await processDocumentJob(
+      { prisma, storage: new FakeStorageProvider(), llm: new FakeLLMProvider() },
+      { documentId: document.id },
+    );
+
+    const versions = await prisma.prdVersion.findMany({
+      where: { prd: { documentId: document.id } },
+      orderBy: { versionNumber: "asc" },
+    });
+    expect(versions).toHaveLength(2);
+    expect(versions[0].versionNumber).toBe(1);
+    expect(versions[0].content).toBe("pre-migration legacy content");
+    expect(versions[0].modelId).toBe("legacy-model");
+    expect(versions[1].versionNumber).toBe(2);
+
+    const prd = await prisma.prd.findUniqueOrThrow({
+      where: { documentId: document.id },
+      include: { currentVersion: true },
+    });
+    expect(prd.currentVersion?.versionNumber).toBe(2);
+  });
+
   it("skips parsing when extractedText already exists (retry/regenerate)", async () => {
     const { document } = await createTestUserAndDocument({
       extractedText: "Already parsed text.",
